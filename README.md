@@ -1,6 +1,6 @@
 # UltraLight TC Player
 
-UltraLight TC Playerは、動画を確認しながらIN / OUT位置を取得し、切り出し用の`ffmpeg`コマンドをコピーできる軽量なmacOSアプリです。
+UltraLight TC Playerは、動画を確認しながらIN / OUT位置を取得し、切り出し / GIF生成用の`ffmpeg`コマンドをコピーできる軽量なmacOSアプリです。
 
 機能を絞り、軽快に使えることを重視しています。
 
@@ -14,8 +14,8 @@ UltraLight TC Playerは、動画を確認しながらIN / OUT位置を取得し�
 
 現在のリリース:
 
-- バージョン: `1.0.0`
-- ビルド: `1`
+- バージョン: `1.1.0`
+- ビルド: `2`
 - Bundle ID: `io.github.k8gma2mo10.ultralight-tc-player-mac`
 
 ## 動作・開発環境
@@ -63,7 +63,7 @@ open ./.DerivedData/Build/Products/Debug/UltraLightTCPlayer.app
 
 GitHub Release版は、Developer ID署名およびApple公証を行わず、無料で配布しています。アプリの整合性を保つためad-hoc署名を付けていますが、macOS Gatekeeperでは確認済みの開発元として認識されません。
 
-1. GitHub Releasesから`UltraLightTCPlayer-mac-arm64-v1.0.0.zip`をダウンロードします。
+1. GitHub Releasesから`UltraLightTCPlayer-mac-arm64-v1.1.0.zip`をダウンロードします。
 2. 必要に応じて、同梱の`.sha256`ファイルを使ってZIPのチェックサムを確認します。
 3. ZIPを展開し、`UltraLightTCPlayer.app`を`Applications`フォルダへ移動します。
 4. アプリを一度開きます。初回はmacOSによって起動がブロックされます。
@@ -76,7 +76,7 @@ GitHub Release版は、Developer ID署名およびApple公証を行わず、無�
 ターミナルからチェックサムを確認する場合:
 
 ```bash
-shasum -a 256 -c UltraLightTCPlayer-mac-arm64-v1.0.0.zip.sha256
+shasum -a 256 -c UltraLightTCPlayer-mac-arm64-v1.1.0.zip.sha256
 ```
 
 ## Releaseビルド
@@ -113,6 +113,9 @@ codesign --verify --deep --strict --verbose=2 ./.DerivedData/Build/Products/Rele
 - `Clear In`: INだけをクリア
 - `Clear Out`: OUTだけをクリア
 - `Clear All`: IN / OUTを両方クリア
+- `Command`: `Cut` / `GIF`のコマンド生成を切り替え
+- GIF選択時の`GIF FPS`: `1`から`30`までの整数を入力
+- GIF選択時の`GIF Width`: `320 / 480 / 640 / 960 / 1280 / 1920`から横幅を選択
 
 新しい動画を開くと、以前のIN / OUTと音量状態はリセットされます。
 
@@ -125,6 +128,8 @@ codesign --verify --deep --strict --verbose=2 ./.DerivedData/Build/Products/Rele
 - Play / Pauseボタンは、文言が切り替わっても操作部分が動かない固定幅
 - フレーム送り / 戻しは矢印キーで操作し、専用の`Frame -1` / `Frame +1`ボタンは表示しない
 - ツールバーはコンパクト表示とし、`動画を開く`ボタンを配置
+- `ffmpeg Command`欄には、`Command`で選択中の`Cut`または`GIF`コマンドを表示
+- GIF用のFPS入力と横幅選択は、`Command`が`GIF`の時だけ表示
 
 ## ffmpegコマンド生成
 
@@ -154,6 +159,34 @@ ffmpeg -ss 00:00:10.000 -to 00:00:25.000 -i "/Users/me/Videos/sample.mp4" -c cop
 - `sample.mp4` -> `sample-cut.mp4`
 - `sample.mov` -> `sample-cut.mov`
 
+## GIF生成コマンド生成
+
+`Command`を`GIF`に切り替えると、通常の切り出しとは別にGIF生成用の`ffmpeg`コマンドを生成します。アプリ内ではGIF生成を実行せず、コマンド文字列の生成とコピーだけを行います。
+
+生成されるコマンド例:
+
+```bash
+ffmpeg -ss 00:00:10.000 -to 00:00:25.000 -i "/Users/me/Videos/sample.mp4" -filter_complex "[0:v]fps=12,scale=640:-2:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" -an -loop 0 "/Users/me/Videos/sample.gif"
+```
+
+生成規則:
+
+- 入力には現在読み込んでいるファイルのフルパスを使用
+- 出力先は入力ファイルと同じフォルダ
+- 出力ファイル名は、元動画名の拡張子だけを`.gif`に変更
+- 出力ファイル名に`-cut`は付けない
+- `-n`と`-y`は付けず、同名ファイルがある場合の扱いはffmpeg実行時のプロンプトに任せる
+- GIF FPSは`1`から`30`までの整数で、初期値は`12`
+- GIF横サイズは`320 / 480 / 640 / 960 / 1280 / 1920`から選択し、初期値は`640`
+- 横動画・縦動画のどちらも、横幅を選択値に固定
+- 高さはアスペクト比を維持して自動計算し、余白や黒帯は追加しない
+- scale指定は`scale={width}:-2:flags=lanczos`
+
+例:
+
+- `sample.mp4` -> `sample.gif`
+- `sample.mov` -> `sample.gif`
+
 ## 既知の制限
 
 - タイムコードは確認用であり、放送用途の厳密なタイムコードではない
@@ -161,6 +194,7 @@ ffmpeg -ss 00:00:10.000 -to 00:00:25.000 -i "/Users/me/Videos/sample.mp4" -c cop
 - VFR素材では表示に小さな誤差が出る可能性がある
 - フレーム送り / 戻しは`1 / fps`秒単位の目安シーク
 - `-c copy`による切り出しは、キーフレーム位置の影響で開始・終了位置が少しずれる可能性がある
+- GIF生成は再エンコードのため、FPSや横サイズの指定によって画質とファイルサイズが変わる
 - ファイル名に含まれるシェル特殊文字の厳密なエスケープには未対応
 
 ## 今後の改善候補

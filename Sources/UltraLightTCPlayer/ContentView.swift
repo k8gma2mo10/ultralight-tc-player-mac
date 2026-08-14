@@ -186,42 +186,99 @@ struct ContentView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("ffmpeg Command")
-                        .font(.headline)
-
-                    Spacer()
-
-                    if let copyFeedback = viewModel.copyFeedback {
-                        Text(copyFeedback)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button("Copy") {
-                        viewModel.copyCommandToPasteboard()
-                    }
-                    .disabled(!viewModel.canCopyCommand)
-                }
-
-                ScrollView {
-                    Text(viewModel.ffmpegHint)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(12)
-                }
-                .frame(minHeight: 96)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-            }
+            commandPanel
         }
         .padding(18)
         .buttonStyle(.borderedProminent)
         .tint(.accentColor)
+    }
+
+    private var commandPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Text("ffmpeg Command")
+                    .font(.headline)
+
+                HStack(spacing: 6) {
+                    Text("Command")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Command", selection: $viewModel.commandMode) {
+                        ForEach(PlayerViewModel.CommandMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 150)
+                }
+
+                Spacer()
+
+                if let copyFeedback = viewModel.copyFeedback {
+                    Text(copyFeedback)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Copy") {
+                    viewModel.copyCommandToPasteboard()
+                }
+                .disabled(!viewModel.canCopyCommand)
+            }
+
+            if viewModel.commandMode == .gif {
+                gifCommandOptions
+            }
+
+            ScrollView {
+                Text(viewModel.ffmpegHint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(12)
+            }
+            .frame(minHeight: 96)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+        }
+    }
+
+    private var gifCommandOptions: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 6) {
+                Text("GIF FPS")
+                    .foregroundStyle(.secondary)
+
+                TextField("12", value: $viewModel.gifFPS, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 56)
+
+                Stepper(value: $viewModel.gifFPS, in: PlayerViewModel.gifFPSRange) {
+                    Text("GIF FPS")
+                }
+                .labelsHidden()
+            }
+
+            HStack(spacing: 6) {
+                Text("GIF Width")
+                    .foregroundStyle(.secondary)
+
+                Picker("GIF Width", selection: $viewModel.gifWidth) {
+                    ForEach(PlayerViewModel.gifWidthOptions, id: \.self) { width in
+                        Text("\(width) px").tag(width)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+            }
+        }
+        .font(.subheadline)
+        .buttonStyle(.bordered)
     }
 }
 

@@ -10,6 +10,16 @@ final class PlayerViewModel: ObservableObject {
         case outPoint
     }
 
+    enum CommandMode: String, CaseIterable, Identifiable, Hashable {
+        case cut = "Cut"
+        case gif = "GIF"
+
+        var id: Self { self }
+    }
+
+    static let gifFPSRange = 1...30
+    static let gifWidthOptions = [320, 480, 640, 960, 1280, 1920]
+
     @Published private(set) var currentURL: URL?
     @Published private(set) var currentTime = 0.0
     @Published private(set) var duration = 0.0
@@ -30,6 +40,26 @@ final class PlayerViewModel: ObservableObject {
     @Published var isMuted = false {
         didSet {
             player.isMuted = isMuted
+        }
+    }
+    @Published var commandMode = CommandMode.cut {
+        didSet {
+            copyFeedback = nil
+        }
+    }
+    @Published var gifFPS = 12 {
+        didSet {
+            let clampedFPS = Self.clampedGIFFPS(gifFPS)
+            if gifFPS != clampedFPS {
+                gifFPS = clampedFPS
+            }
+        }
+    }
+    @Published var gifWidth = 640 {
+        didSet {
+            if !Self.gifWidthOptions.contains(gifWidth) {
+                gifWidth = 640
+            }
         }
     }
     @Published private(set) var errorMessage: String?
@@ -97,13 +127,30 @@ final class PlayerViewModel: ObservableObject {
     }
 
     var ffmpegCommand: String? {
-        guard let currentURL, let inPoint, let outPoint, inPoint < outPoint else {
-            return nil
+        switch commandMode {
+        case .cut:
+            return cutFFmpegCommand
+        case .gif:
+            return gifFFmpegCommand
         }
+    }
 
-        let outputURL = makeOutputURL(for: currentURL)
+    var cutFFmpegCommand: String? {
+        guard let inputs = commandInputs else { return nil }
+
+        let outputURL = makeCutOutputURL(for: inputs.currentURL)
         return """
-        ffmpeg -ss \(TimecodeFormatter.ffmpegTimestamp(seconds: inPoint)) -to \(TimecodeFormatter.ffmpegTimestamp(seconds: outPoint)) -i "\(currentURL.path)" -c copy "\(outputURL.path)"
+        ffmpeg -ss \(TimecodeFormatter.ffmpegTimestamp(seconds: inputs.inPoint)) -to \(TimecodeFormatter.ffmpegTimestamp(seconds: inputs.outPoint)) -i "\(inputs.currentURL.path)" -c copy "\(outputURL.path)"
+        """
+    }
+
+    var gifFFmpegCommand: String? {
+        guard let inputs = commandInputs else { return nil }
+
+        let outputURL = makeGIFOutputURL(for: inputs.currentURL)
+        let filter = "[0:v]fps=\(gifFPS),scale=\(gifWidth):-2:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse"
+        return """
+        ffmpeg -ss \(TimecodeFormatter.ffmpegTimestamp(seconds: inputs.inPoint)) -to \(TimecodeFormatter.ffmpegTimestamp(seconds: inputs.outPoint)) -i "\(inputs.currentURL.path)" -filter_complex "\(filter)" -an -loop 0 "\(outputURL.path)"
         """
     }
 
@@ -113,7 +160,7 @@ final class PlayerViewModel: ObservableObject {
         }
 
         guard let inPoint, let outPoint else {
-            return "Set both IN and OUT to generate an ffmpeg command."
+            return "Set both IN and OUT to generate the selected ffmpeg command."
         }
 
         guard inPoint < outPoint else {
@@ -435,12 +482,30 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func makeOutputURL(for sourceURL: URL) -> URL {
+    private var commandInputs: (currentURL: URL, inPoint: Double, outPoint: Double)? {
+        guard let currentURL, let inPoint, let outPoint, inPoint < outPoint else {
+            return nil
+        }
+
+        return (currentURL, inPoint, outPoint)
+    }
+
+    private static func clampedGIFFPS(_ value: Int) -> Int {
+        min(max(value, gifFPSRange.lowerBound), gifFPSRange.upperBound)
+    }
+
+    private func makeCutOutputURL(for sourceURL: URL) -> URL {
         let directory = sourceURL.deletingLastPathComponent()
         let stem = sourceURL.deletingPathExtension().lastPathComponent
         let ext = sourceURL.pathExtension
         let fileName = ext.isEmpty ? "\(stem)-cut" : "\(stem)-cut.\(ext)"
         return directory.appendingPathComponent(fileName)
+    }
+
+    private func makeGIFOutputURL(for sourceURL: URL) -> URL {
+        let directory = sourceURL.deletingLastPathComponent()
+        let stem = sourceURL.deletingPathExtension().lastPathComponent
+        return directory.appendingPathComponent("\(stem).gif")
     }
 
     private func isSupportedVideoURL(_ url: URL) -> Bool {
